@@ -1,0 +1,96 @@
+---
+title: "SNP filtering conditions"
+output: html_notebook
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "~/2024-Digitaria/scripts/")
+```
+
+### Distribution of mean depth calculated from all the 2-allelic SNPs
+
+Reanalyze the conditions with the sample set after removal of presumably
+misidentified samples (DG_a and DG_c). Consider only two bcf files, each of
+which contains D. ciliaris and all (D. radicosa and D. ciliaris) samples,
+respectively.
+
+Filtering conditions:
+ - Discard SNPs with more than 1 missing samples
+ - Retain SNPs which has 2 alleles at maximum
+
+
+```{sh}
+export PATH=${HOME}/local/bin:${PATH}
+
+which bcftools
+which vcftools
+bcftools --version
+vcftools --version
+
+cd ~/2024-Digitaria/030-vcf
+
+# D. ciliaris
+bcftools view --with-header Dci2.bcf |
+vcftools --vcf - --recode --stdout --max-alleles 2 |
+vcftools --vcf - --site-mean-depth --stdout --max-missing-count 1 \
+  > Dci2.site-mean-depth.tsv
+
+# D. radicosa & D. ciliaris
+bcftools view --with-header DG2.bcf |
+vcftools --vcf - --recode --stdout --max-alleles 2 |
+vcftools --vcf - --site-mean-depth --stdout --max-missing-count 1 \
+  > DG2.site-mean-depth.tsv
+
+```
+
+```{r}
+library(tidyverse)
+depth_Dci <- read.table("../030-vcf/Dci2.site-mean-depth.tsv", header = TRUE, sep = "\t")
+depth_Dci <- mutate(depth_Dci, TYPE = "Dci", .before = everything())
+depth_DG  <- read.table("../030-vcf/DG2.site-mean-depth.tsv",  header = TRUE, sep = "\t")
+depth_DG  <- mutate(depth_DG, TYPE = "DG", .before = everything())
+
+depth <- bind_rows(depth_Dci, depth_DG)
+depth <- depth |> 
+  mutate(TYPE = factor(TYPE), CHROM = factor(CHROM)) |> 
+  group_by(TYPE)
+summarise(depth, n())
+
+depth |> 
+  ggplot(aes(x = MEAN_DEPTH)) +
+  facet_grid(cols = vars(TYPE)) +
+  geom_histogram() +
+  theme_bw()
+```
+
+```{r}
+depth |> 
+  filter(MEAN_DEPTH < 250) |> 
+  ggplot(aes(x = MEAN_DEPTH)) +
+  facet_grid(cols = vars(TYPE)) +
+  geom_histogram() +
+  theme_bw()
+```
+
+```{r}
+depth |> 
+  filter(MEAN_DEPTH < 100) |> 
+  ggplot(aes(x = MEAN_DEPTH)) +
+  facet_grid(cols = vars(TYPE)) +
+  geom_histogram() +
+  theme_bw()
+```
+
+```{r}
+depth |> 
+  filter(MEAN_DEPTH <= 50) |> 
+  ggplot(aes(x = MEAN_DEPTH)) +
+  facet_grid(cols = vars(TYPE)) +
+  geom_histogram(binwidth = 1) +
+  theme_bw()
+```
+
+ -> Based on the observation of these histograms, filtering of SNPs by depth:
+    use SNPs with AD in range 5 - 50.
+
+###

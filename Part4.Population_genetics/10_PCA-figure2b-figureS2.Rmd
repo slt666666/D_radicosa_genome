@@ -1,0 +1,304 @@
+---
+title: "PCA using SNPs obtianed from Digitaria smaples by MIG-seq"
+output: html_notebook
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "~/2024-Digitaria/scripts/")
+```
+
+### Perform PCA using filtered (quality and LD) SNP dataset with PLINK.
+
+Use ld2 SNP dataset.
+
+```{sh}
+export PATH=${HOME}/local/bin:${PATH}
+
+which plink
+plink --version
+
+cd ~/2024-Digitaria/030-vcf
+
+# D. radicosa
+cd Dra
+plink --pca 10 'header' 'var-wts' --file Dra.ld2 --out Dra.ld2
+
+# D. ciliaris
+cd ../Dci
+plink --pca 11 'header' 'var-wts' --file Dci.ld2 --out Dci.ld2
+
+# All samples (D. radicosa & D. ciliaris)
+cd ../DG
+plink --pca 21 'header' 'var-wts' --file DG.ld2 --out DG.ld2
+```
+
+### D. radicosa samples
+
+```{r}
+library(tidyverse)
+eigenval <- read.csv(file = "~/2024-Digitaria/030-vcf/Dra/Dra.ld2.eigenval", header = FALSE)
+colnames(eigenval) <- "eigenval"
+sum_eigenval <- sum(eigenval$eigenval)
+eigenval <- eigenval |>
+  mutate(
+    PC = factor(x = paste0("PC", 1:10), levels = paste0("PC", 1:10)),
+    contrib = eigenval / sum_eigenval,
+    .before = everything()
+  ) |> 
+  mutate(
+    p.contrib = round(contrib * 100, 1)
+  )
+ggplot(eigenval) +
+  geom_bar(aes(x = PC, y = contrib), stat = "identity")
+
+eigenvec <- read.table("~/2024-Digitaria/030-vcf/Dra/Dra.ld2.eigenvec",
+  header = TRUE, sep = " "
+)
+eigenvec <- eigenvec |> 
+  select(-FID) |> 
+  rename(INDV = IID) |> 
+  mutate(
+    Location = factor(
+      c(
+        rep("Kyoto", 4),
+        rep("Kobe", 2),
+        "Wakayama",
+        rep("Shirahama", 3)
+      ),
+      levels = c(
+        "Kyoto", "Kobe", "Wakayama", "Shirahama"
+      )
+    ),
+    .after = INDV
+  )
+ggplot(eigenvec) + 
+  geom_point(aes(x = PC1, y = PC2, color = Location, shape = Location)) +
+  geom_text(aes(x = PC1, y = PC2 + 0.05, label = INDV)) +
+  labs(
+    x = paste0("PC1 (", eigenval$p.contrib[1], "%)"),
+    y = paste0("PC2 (", eigenval$p.contrib[2], "%)")
+  ) +
+  theme_bw()
+
+```
+
+```{R}
+# Create a fig for the paper
+ggplot(eigenvec) + 
+  geom_point(
+    aes(x = PC1, y = PC2, color = Location, shape = Location),
+    size = 3
+  ) +
+  labs(
+    x = paste0("PC1 (", eigenval$p.contrib[1], "%)"),
+    y = paste0("PC2 (", eigenval$p.contrib[2], "%)")
+  ) +
+  scale_shape_manual(values = 15:18) +
+  theme_classic() +
+  theme(
+    axis.line = element_blank(),
+    axis.ticks = element_line(linewidth = 0.4),
+    panel.border = element_rect(fill = NA, linewidth = 0.5),
+    panel.background = element_blank(),
+    text = element_text(size = 14)
+  )
+
+ggsave("Dradicosa.png", scale = 1, dpi = 400, width = 4.5, height = 3.5)
+
+ggplot(eigenvec) + 
+  geom_point(
+    aes(x = PC1, y = PC2, color = Location, shape = Location),
+    size = 3
+  ) +
+  labs(
+    x = paste0("PC1 (", eigenval$p.contrib[1], "%)"),
+    y = paste0("PC2 (", eigenval$p.contrib[2], "%)")
+  ) +
+  scale_shape_manual(values = 15:18) +
+  theme_classic() +
+  theme(
+    axis.line = element_blank(),
+    axis.ticks = element_line(linewidth = 0.4),
+    panel.border = element_rect(fill = NA, linewidth = 0.5),
+    panel.background = element_blank(),
+    text = element_text(size = 14),
+    legend.position = "none"
+  )
+
+ggsave("Dradicosa_nolegend.png", scale = 1, dpi = 400, width = 3.5, height = 3.5)
+```
+
+
+### D. ciliaris samples
+
+```{r}
+library(tidyverse)
+eigenval <- read.csv(file = "~/2024-Digitaria/030-vcf/Dci/Dci.ld2.eigenval", header = FALSE)
+colnames(eigenval) <- "eigenval"
+sum_eigenval <- sum(eigenval$eigenval)
+eigenval <- eigenval |>
+  mutate(
+    PC = factor(x = paste0("PC", 1:11), levels = paste0("PC", 1:11)),
+    contrib = eigenval / sum_eigenval,
+    .before = everything()
+  ) |> 
+  mutate(
+    p.contrib = round(contrib * 100, 2)
+  )
+ggplot(eigenval) +
+  geom_bar(aes(x = PC, y = contrib), stat = "identity")
+
+eigenvec <- read.table("~/2024-Digitaria/030-vcf/Dci/Dci.ld2.eigenvec",
+  header = TRUE, sep = " "
+)
+eigenvec <- eigenvec |> 
+  select(-FID) |> 
+  rename(INDV = IID) |> 
+  mutate(
+    LOC = c(
+      rep("Kyoto", 5),
+      rep("Wakayama", 6)
+    ),
+    HAB = factor(
+      x = c(
+        rep("normal", 2), rep("paddy", 2), "coast",
+        rep("normal", 2), rep("paddy", 2), rep("coast", 2)
+      ),
+      levels = c("normal", "paddy", "coast")
+    ),
+    .after = INDV
+  )
+ggplot(eigenvec) + 
+  geom_point(aes(x = PC1, y = PC2, color = LOC, shape = LOC)) +
+  geom_text(aes(x = PC1, y = PC2 + 0.05, label = INDV)) +
+  labs(
+    x = paste0("PC1 (", eigenval$p.contrib[1], "%)"),
+    y = paste0("PC2 (", eigenval$p.contrib[2], "%)"),
+    color = "Location", shape = "Location"
+  ) +
+  theme_bw()
+ggplot(eigenvec) + 
+  geom_point(aes(x = PC1, y = PC2, color = HAB, shape = HAB)) +
+  geom_text(aes(x = PC1, y = PC2 + 0.05, label = INDV)) +
+  labs(
+    x = paste0("PC1 (", eigenval$p.contrib[1], "%)"),
+    y = paste0("PC2 (", eigenval$p.contrib[2], "%)"),
+    color = "Habitat", shape = "Habitat"
+  ) +
+  theme_bw()
+
+```
+
+
+### All samples (D. radicosa & D. ciliaris)
+
+```{r}
+library(tidyverse)
+eigenval <- read.csv(file = "~/2024-Digitaria/030-vcf/DG/DG.ld2.eigenval", header = FALSE)
+colnames(eigenval) <- "eigenval"
+sum_eigenval <- sum(eigenval$eigenval)
+eigenval <- eigenval |>
+  mutate(
+    PC = factor(x = paste0("PC", 1:21), levels = paste0("PC", 1:21)),
+    contrib = eigenval / sum_eigenval,
+    .before = everything()
+  ) |> 
+  mutate(
+    p.contrib = round(contrib * 100, 2)
+  )
+ggplot(eigenval) +
+  geom_bar(aes(x = PC, y = contrib), stat = "identity")
+
+eigenvec <- read.table("~/2024-Digitaria/030-vcf/DG/DG.ld2.eigenvec",
+  header = TRUE, sep = " "
+)
+eigenvec <- eigenvec |> 
+  select(-FID) |> 
+  rename(INDV = IID) |> 
+  mutate(
+    Species = factor(
+      c(
+        rep("D. radicosa", 10),
+        rep("D. ciliaris", 11)
+      ),
+      levels = c("D. radicosa", "D. ciliaris")
+    ),
+    LOC = c(
+      rep("Kyoto", 4),
+      rep("Kobe", 2),
+      "Wakayama",
+      rep("Shirahama", 3),
+      rep("Kyoto", 5),
+      rep("Wakayama", 6)
+    ),
+    .after = INDV
+  )
+ggplot(eigenvec) + 
+  geom_point(aes(x = PC1, y = PC2, color = LOC, shape = LOC)) +
+  geom_text(aes(x = PC1, y = PC2 + 0.05, label = INDV)) +
+  labs(
+    x = paste0("PC1 (", eigenval$p.contrib[1], "%)"),
+    y = paste0("PC2 (", eigenval$p.contrib[2], "%)"),
+    color = "Location", shape = "Location"
+  ) +
+  theme_bw()
+ggplot(eigenvec) + 
+  geom_point(aes(x = PC1, y = PC2, color = Species, shape = Species)) +
+  geom_text(aes(x = PC1, y = PC2 + 0.05, label = INDV)) +
+  labs(
+    x = paste0("PC1 (", eigenval$p.contrib[1], "%)"),
+    y = paste0("PC2 (", eigenval$p.contrib[2], "%)"),
+    color = "Species", shape = "Species"
+  ) +
+  theme_bw()
+
+```
+
+
+```{R}
+# Create a fig for the paper
+ggplot(eigenvec) + 
+  geom_point(
+    aes(x = PC1, y = PC2, color = Species, shape = Species),
+    size = 3
+  ) +
+  labs(
+    x = paste0("PC1 (", eigenval$p.contrib[1], "%)"),
+    y = paste0("PC2 (", eigenval$p.contrib[2], "%)")
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_blank(),
+    axis.ticks = element_line(linewidth = 0.4),
+    panel.border = element_rect(fill = NA, linewidth = 0.5),
+    panel.background = element_blank(),
+    text = element_text(size = 14)
+  )
+
+ggsave("all_species_old.png", scale = 1, dpi = 400, width = 4.5, height = 3.5)
+
+ggplot(eigenvec) + 
+  geom_point(
+    aes(x = PC1, y = PC2, color = Species, shape = Species),
+    size = 3
+  ) +
+  labs(
+    x = paste0("PC1 (", eigenval$p.contrib[1], "%)"),
+    y = paste0("PC2 (", eigenval$p.contrib[2], "%)")
+  ) +
+  theme_classic() +
+  theme(
+    axis.line = element_blank(),
+    axis.ticks = element_line(linewidth = 0.4),
+    panel.border = element_rect(fill = NA, linewidth = 0.5),
+    panel.background = element_blank(),
+    text = element_text(size = 14),
+    legend.position = "none"
+  )
+
+ggsave("all_species_old_nolegend.png", scale = 1, dpi = 400, width = 3.5, height = 3.5)
+```
+
+
+
+

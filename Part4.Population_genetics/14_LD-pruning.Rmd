@@ -1,0 +1,206 @@
+---
+title: "Check distribution of SNPs among the genome"
+output: html_notebook
+---
+
+```{r, setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "~/2024-Digitaria/scripts/")
+```
+
+Reanalyze the LD-pruning conditions with the sample set after removal of presumably
+misidentified samples (DG_a and DG_c). Consider only two bcf files, each of
+which contains D. ciliaris and all (D. radicosa and D. ciliaris) samples,
+respectively.
+
+### Prepare list containing position of SNPs and make ped format files from filtered vcf's.
+
+```{sh}
+export PATH=${HOME}/local/bin:${PATH}
+
+which plink
+plink --version
+
+cd ~/2024-Digitaria/030-vcf
+
+# D. ciliaris
+echo
+cd Dci2
+DCI_VCF=Dci2.flt.vcf
+sed -ne '/^#/!p' ${DCI_VCF} | wc -l | xargs printf 'D. ciliaris # SNPs: %d\n'
+plink --vcf ${DCI_VCF} --recode --out Dci2 --allow-extra-chr
+
+# All samples (D. radicosa & D. ciliaris)
+echo
+cd ../DG2
+ALL_VCF=DG2.flt.vcf
+sed -ne '/^#/!p' ${ALL_VCF} | wc -l | xargs printf 'All samples # SNPs: %d\n'
+plink --vcf ${ALL_VCF} --recode --out DG2 --allow-extra-chr
+
+
+```
+
+```{sh}
+cd ~/2024-Digitaria/030-vcf
+
+# D. ciliaris
+cd Dci2
+cut -f2 Dci2.map | sed -nE 's/^(.+)_([0-9]+)_.+$/\1\t\2/gp' > Dci2.flt.pos.tsv
+
+# All samples (D. radicosa & D. ciliaris)
+cd ../DG2
+cut -f2 DG2.map | sed -nE 's/^(.+)_([0-9]+)_.+$/\1\t\2/gp' > DG2.flt.pos.tsv
+```
+
+```{r}
+plot_pos_on_chr <- function(chrs_tbl, snps_tbl, description) {
+# Reference on writing the visualization codes:
+# https://albert-rapp.de/posts/ggplot2-tips/11_rounded_rectangles/11_rounded_rectangles.html
+  max_len <- max(chrs_tbl$pos)
+  snp_distrib_tbl <- snps_tbl |> group_by(chr) |> tally() |> rename(n_snps = n)
+  chrs_tbl <- inner_join(chrs_tbl, snp_distrib_tbl, by = join_by(chr))
+  
+  p <- ggplot(chrs_tbl) +
+    geom_rect(
+      aes(
+        xmin = 0,
+        xmax = pos,
+        ymin = as.integer(chr) - 0.3,
+        ymax = as.integer(chr) + 0.3
+      ),
+      fill = "#e0e0e0"
+    ) +
+    geom_text(
+      aes(
+        x = -max_len/24,
+        y = as.integer(chr),
+        label = paste0(chr, " (", n_snps, ")"),
+        hjust = "right"
+      )
+    ) +
+    coord_cartesian(
+      xlim = c(-max_len/8, max_len)
+    ) +
+    labs(
+      x = element_blank(),
+      y = element_blank(),
+      title = element_blank()
+    ) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text = element_blank(),
+      axis.line = element_blank(),
+      axis.ticks = element_blank(),
+      panel.background = element_blank()
+    )
+  
+  p <- p +
+    geom_tile(
+      data = snps_tbl,
+      aes(
+        x = pos,
+        y = as.integer(chr),
+        height = 0.3 + 0.3,
+        width = 0.2
+      ),
+      fill = "orange",
+      alpha = 0.5
+    ) +
+    labs(title = paste0(description, " (total: ", nrow(snps_tbl), ")"))
+  
+  return(p)
+}
+```
+
+```{r}
+# Load lengths of chromosomes
+chrs_tbl <- read.table(
+  "../030-vcf/Dra_ref.chrs.tsv", header = FALSE, sep = "\t",
+  col.names = c("chr", "pos"), stringsAsFactors = TRUE
+) |> mutate(
+  chr = factor(x = chr, levels = rev(levels(chr))),
+  pos = pos / 1e6
+)
+
+
+# D. ciliaris
+snps_tbl <- read.table(
+  "../030-vcf/Dci2/Dci2.flt.pos.tsv", header = FALSE, sep = "\t",
+  col.names = c("chr", "pos"), stringsAsFactors = TRUE
+) |> mutate(
+  chr = factor(x = chr, levels = rev(levels(chr))),
+  pos = pos / 1e6
+)
+plot_pos_on_chr(chrs_tbl, snps_tbl, "D. ciliaris before LD pruning")
+
+
+#  All samples (D. radicosa & D. ciliaris)
+snps_tbl <- read.table(
+  "../030-vcf/DG2/DG2.flt.pos.tsv", header = FALSE, sep = "\t",
+  col.names = c("chr", "pos"), stringsAsFactors = TRUE
+) |> mutate(
+  chr = factor(x = chr, levels = rev(levels(chr))),
+  pos = pos / 1e6
+)
+plot_pos_on_chr(chrs_tbl, snps_tbl, "All samples before LD pruning")
+
+```
+
+
+```{sh}
+export PATH=${HOME}/local/bin:${PATH}
+
+which plink
+plink --version
+
+cd ~/2024-Digitaria/030-vcf
+
+# D. ciliaris
+cd Dci2
+plink --file Dci2 --indep-pairwise 5000kb 1 0.1 --allow-extra-chr --out Dci2.ld2
+plink --file Dci2 --extract Dci2.ld2.prune.in \
+  --recode --out Dci2.ld2 --allow-extra-chr
+cut -f2 Dci2.ld2.map | sed -nE 's/^(.+)_([0-9]+)_.+$/\1\t\2/gp' > Dci2.ld2.pos.tsv
+
+# All samples (D.ciliaris & D. radicosa)
+cd ../DG2
+plink --file DG2 --indep-pairwise 5000kb 1 0.1 --allow-extra-chr --out DG2.ld2
+plink --file DG2 --extract DG2.ld2.prune.in \
+  --recode --out DG2.ld2 --allow-extra-chr
+cut -f2 DG2.ld2.map | sed -nE 's/^(.+)_([0-9]+)_.+$/\1\t\2/gp' > DG2.ld2.pos.tsv
+
+```
+
+
+```{r}
+# Load lengths of chromosomes
+chrs_tbl <- read.table(
+  "../030-vcf/Dra_ref.chrs.tsv", header = FALSE, sep = "\t",
+  col.names = c("chr", "pos"), stringsAsFactors = TRUE
+) |> mutate(
+  chr = factor(x = chr, levels = rev(levels(chr))),
+  pos = pos / 1e6
+)
+
+# D. ciliaris
+snps_tbl <- read.table(
+  "../030-vcf/Dci2/Dci2.ld2.pos.tsv", header = FALSE, sep = "\t",
+  col.names = c("chr", "pos"), stringsAsFactors = TRUE
+) |> mutate(
+  chr = factor(x = chr, levels = rev(levels(chr))),
+  pos = pos / 1e6
+)
+plot_pos_on_chr(chrs_tbl, snps_tbl, "D. ciliaris after LD pruning")
+
+# All samples (D. radicosa & D. ciliaris)
+snps_tbl <- read.table(
+  "../030-vcf/DG2/DG2.ld2.pos.tsv", header = FALSE, sep = "\t",
+  col.names = c("chr", "pos"), stringsAsFactors = TRUE
+) |> mutate(
+  chr = factor(x = chr, levels = rev(levels(chr))),
+  pos = pos / 1e6
+)
+plot_pos_on_chr(chrs_tbl, snps_tbl, "All samples after LD pruning")
+```
+
+
+###
